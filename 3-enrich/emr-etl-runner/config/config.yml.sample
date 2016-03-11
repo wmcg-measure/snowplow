@@ -95,6 +95,8 @@ storage:
       es_nodes_wan_only: false # Set to true if using Amazon Elasticsearch Service
       maxerror: # Not required for Elasticsearch
       comprows: # Not required for Elasticsearch
+data_modeling:
+  steps: [] # Set this to add extra jobflow steps to perform data modeling. Leave empty otherwise
 monitoring:
   tags: {} # Name-value pairs describing this job
   logging:
