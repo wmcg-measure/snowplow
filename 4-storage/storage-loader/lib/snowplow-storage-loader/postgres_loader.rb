@@ -50,6 +50,8 @@ module Snowplow
           raise DatabaseLoadError, error_message
         end
 
+        puts "Successfully loaded Snowplow events into #{target[:name]} (PostgreSQL database)."
+
         if snowplow_tracking_enabled
           Monitoring::Snowplow.instance.track_load_succeeded()
         end
@@ -63,11 +65,15 @@ module Snowplow
         end
 
         unless post_processing.nil?
+          puts "Performing VACUUM and/or ANALYZE in #{target[:name]} (PostgreSQL database)..."
+
           status = execute_queries(target, [ "#{post_processing}#{target[:table]};" ] )
           unless status == []
             raise DatabaseLoadError, "#{status[1]} error executing #{status[0]}: #{status[2]}"
           end
-        end  
+
+          puts "Successfully performed VACUUM and/or ANALYZE in #{target[:name]} (PostgreSQL database)."
+        end
       end
 
       # Adapted from:  https://bitbucket.org/ged/ruby-pg/raw/9812218e0654caa58f8604838bc368434f7b3828/sample/copyfrom.rb

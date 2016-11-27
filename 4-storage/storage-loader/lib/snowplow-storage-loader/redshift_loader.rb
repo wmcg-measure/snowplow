@@ -89,6 +89,8 @@ module Snowplow
           raise DatabaseLoadError, error_message
         end
 
+        puts "Successfully loaded Snowplow events into #{target[:name]} (Redshift cluster)."
+
         if snowplow_tracking_enabled
           Monitoring::Snowplow.instance.track_load_succeeded()
         end
@@ -97,20 +99,28 @@ module Snowplow
         # and execute them in series. VACUUMs cannot be performed
         # inside of a transaction
         if config[:include].include?('vacuum')
+          puts "Performing VACUUM in #{target[:name]} (Redshift cluster)..."
+
           vacuum_statements = [build_vacuum_statement(target[:table])] + shredded_statements.map(&:vacuum).uniq
           vacuum_status = PostgresLoader.execute_queries(target, vacuum_statements)
           unless vacuum_status == []
             raise DatabaseLoadError, Sanitization.sanitize_message("#{vacuum_status[1]} error executing VACUUM statements: #{vacuum_status[0]}: #{vacuum_status[2]}", credentials)
           end
+
+          puts "Successfully performed VACUUM in #{target[:name]} (Redshift cluster)."
         end
 
         # ANALYZE statements should be executed after VACUUM statements.
         unless config[:skip].include?('analyze')
+          puts "Performing ANALYZE in #{target[:name]} (Redshift cluster)..."
+
           analyze_statements = [build_analyze_statement(target[:table])] + shredded_statements.map(&:analyze).uniq
           analyze_status = PostgresLoader.execute_transaction(target, analyze_statements)
           unless analyze_status == []
             raise DatabaseLoadError, Sanitization.sanitize_message("#{analyze_status[1]} error executing ANALYZE statements: #{analyze_status[0]}: #{analyze_status[2]}", credentials)
           end
+
+          puts "Successfully performed ANALYZE in #{target[:name]} (Redshift cluster)."
         end
 
         nil
