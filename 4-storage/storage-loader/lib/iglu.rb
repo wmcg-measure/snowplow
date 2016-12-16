@@ -1,4 +1,4 @@
-# Copyright (c) 2012-2016 Snowplow Analytics Ltd. All rights reserved.
+# Copyright (c) 2016 Snowplow Analytics Ltd. All rights reserved.
 #
 # This program is licensed to you under the Apache License Version 2.0,
 # and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -9,12 +9,6 @@
 # "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
 
-# Author::    Alex Dean (mailto:support@snowplowanalytics.com)
-# Copyright:: Copyright (c) 2012-2014 Snowplow Analytics Ltd
-# License::   Apache License Version 2.0
-
-require 'coveralls'
-Coveralls.wear!
-
-require 'snowplow-storage-loader/sanitization'
-require 'iglu'
+require_relative 'iglu/core.rb'
+require_relative 'iglu/client.rb'
+require_relative 'iglu/self_describing_json.rb'
