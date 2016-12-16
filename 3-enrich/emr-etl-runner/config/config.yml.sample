@@ -66,7 +66,7 @@ storage:
       database: ADD HERE # Name of database
       port: 5439 # Default Redshift port
       ssl_mode: disable # One of disable (default), require, verify-ca or verify-full
-      table: atomic.events
+      schema: events
       username: ADD HERE
       password: ADD HERE
       maxerror: 1 # Stop loading on first error, or increase to permit more load errors
@@ -77,7 +77,7 @@ storage:
       database: ADD HERE # Name of database
       port: 5432 # Default Postgres port
       ssl_mode: disable # One of disable (default), require, verify-ca or verify-full
-      table: atomic.events
+      schema: events
       username: ADD HERE
       password: ADD HERE
       maxerror: # Not required for Postgres
