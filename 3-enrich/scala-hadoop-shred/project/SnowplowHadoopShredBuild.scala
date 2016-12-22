@@ -44,6 +44,7 @@ object SnowplowHadoopShredBuild extends Build {
         Libraries.commonEnrich,
         Libraries.scaldingCore,
         Libraries.scaldingArgs,
+        Libraries.awscala,
         // Libraries.scaldingJson,
         Libraries.scalaz7,
         Libraries.igluClient,

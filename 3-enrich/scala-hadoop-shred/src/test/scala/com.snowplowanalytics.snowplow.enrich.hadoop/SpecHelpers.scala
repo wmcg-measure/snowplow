@@ -29,6 +29,7 @@ object SpecHelpers {
 
   // Internal
   private val igluConfigField = "IgluConfigField"
+  private val duplicateStorageField = "DuplicateStorageConfigField"
 
   /**
    * Standard Iglu configuration.
@@ -60,6 +61,22 @@ object SpecHelpers {
   val IgluResolver = (for {
     json <- JsonUtils.extractJson(igluConfigField, IgluConfig)
     reso <- Resolver.parse(json)
-  } yield reso).getOrElse(throw new RuntimeException("Could not build an Iglu resolver, should never happen")) 
+  } yield reso).getOrElse(throw new RuntimeException("Could not build an Iglu resolver, should never happen"))
 
+  /**
+    * Special duplicate storage configuration, enabling local testing client
+    * @see https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/DynamoDBLocal.html
+    */
+  val DuplicateStorageConfig =
+    """|{
+        |"schema": "iglu:com.snowplowanalytics.snowplow.storage/amazon_dynamodb_config/jsonschema/1-0-0",
+        |"data": {
+          |"name": "local",
+          |"accessKeyId": "",
+          |"secretAccessKey": "",
+          |"awsRegion": "",
+          |"dynamodbTable": "dupes",
+          |"purpose": "DUPLICATE_TRACKING"
+        |}
+       |}""".stripMargin
 }

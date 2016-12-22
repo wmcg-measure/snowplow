@@ -17,7 +17,7 @@ package hadoop
 
 // Java
 import java.util.UUID
-import java.io.{ StringWriter, PrintWriter }
+import java.io.{PrintWriter, StringWriter}
 
 import scalaz.Validation
 
@@ -56,6 +56,7 @@ import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods.{fromJsonNode, asJsonNode}
 
 // This project
+import DuplicateStorage.initStorage
 import inputs.EnrichedEventLoader
 import outputs.{
   ShreddedPartition => UrShreddedPartition
@@ -85,7 +86,7 @@ object ShredJob {
         event <- EnrichedEventLoader.toEnrichedEvent(line).toProcessingMessages
         fp     = getEventFingerprint(event)
         shred <- Shredder.shred(event)
-      } yield (event.event_id, fp, shred)
+      } yield (event.event_id, fp, shred, event.etl_tstamp)
     } catch {
       case NonFatal(nf) =>
         val errorWriter = new StringWriter
@@ -108,7 +109,7 @@ object ShredJob {
   def projectBads(all: ValidatedNel[EventComponents]): Option[ProcessingMessageNel] =
     all.fold(
       e => Some(e), // Nel -> Some(List) of ProcessingMessages
-      c => None)    // Discard
+      _ => None)    // Discard
 
   /**
    * Projects our Successes into a
@@ -263,6 +264,13 @@ class ShredJob(args: Args) extends Job(args) {
     e => throw FatalEtlError(e.map(_.toString)),
     c => c)
 
+  // Unpack duplicate storage. It can throw exception that can happen on initialization
+  // Configuration parsing exception will be thrown on `shredConfig` unpack
+  val duplicateStorage: Option[DuplicateStorage] = shredConfig.duplicatesStorage.map(initStorage) match {
+    case Some(validation) => validation.fold(e => throw FatalEtlError(e.getMessage), c => Some(c))
+    case None => None       // Duplicate storage is optional
+  }
+
   // Aliases for our job
   val input = MultipleTextLineFiles(shredConfig.inFolder).read
   val goodJsonsOutput = PartitionedTsv(shredConfig.outFolder, ShredJob.ShreddedPartition, false, ('json), SinkMode.REPLACE)
@@ -274,6 +282,25 @@ class ShredJob(args: Args) extends Job(args) {
   val trappableInput = shredConfig.exceptionsFolder match {
     case Some(folder) => input.addTrap(Tsv(folder))
     case None => input
+  }
+
+  /**
+    * Try to store event components to duplicate storage.
+    * If event is unique in storage - true will be returned,
+    * If event is already in storage, but with different etlTstamp - false will be returned,
+    * If event is already in storage, but with same etlTstamp - true will be returned (previous shredding was interrupted),
+    * If storage is not configured - true will be returned.
+    * Function can be used as filter predicate
+    *
+    * @param components triple of event_id, event_fingerprint, etl_timestamp
+    * @return true if event is unique, false otherwise
+    */
+  def dedupeCrossBatch(components: (String, String, String)): Boolean = {
+    (components, duplicateStorage) match {
+      case ((eventId, eventFingerprint, etlTstamp), Some(storage)) =>
+        storage.put(eventId, eventFingerprint, etlTstamp)
+      case _ => true
+    }
   }
 
   // Scalding data pipeline
@@ -295,11 +322,14 @@ class ShredJob(args: Args) extends Job(args) {
 
   // Handle good rows
   val good = common
-    .flatMap('output -> ('eventId, 'eventFingerprint, 'good)) { o: ValidatedNel[EventComponents] =>
+    .flatMap('output -> ('eventId, 'eventFingerprint, 'good, 'etlTstamp)) { o: ValidatedNel[EventComponents] =>
       ShredJob.projectGoods(o)
     }
     .groupBy('eventId, 'eventFingerprint) {
       _.take(1)               // Take only one event from group with identical eids and fingerprints
+    }
+    .filter(('eventId, 'eventFingerprint, 'etlTstamp)) { o: (String, String, String) =>
+      dedupeCrossBatch(o)
     }
 
   // Now count synthetic dupes (same id, different fingerprint)

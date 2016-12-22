@@ -17,5 +17,8 @@ fi
  
 cd $TRAVIS_BUILD_DIR
 
+# Run integration deploy
+./integration-tests/cross-batch-deduplication-init.sh
+
 export TRAVIS_BUILD_RELEASE_TAG=${release}
 release-manager --config ./.travis/release_hadoop_shred.yml --check-version --make-artifact --upload-artifact
