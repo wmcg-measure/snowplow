@@ -1,4 +1,4 @@
-# Copyright (c) 2012-2014 Snowplow Analytics Ltd. All rights reserved.
+# Copyright (c) 2012-2017 Snowplow Analytics Ltd. All rights reserved.
 #
 # This program is licensed to you under the Apache License Version 2.0,
 # and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -10,10 +10,12 @@
 # See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
 
 # Author::    Alex Dean (mailto:support@snowplowanalytics.com)
-# Copyright:: Copyright (c) 2012-2014 Snowplow Analytics Ltd
+# Copyright:: Copyright (c) 2012-2017 Snowplow Analytics Ltd
 # License::   Apache License Version 2.0
 
 require 'contracts'
+
+require_relative '../../lib/iglu'
 
 module Snowplow
   module EmrEtlRunner
@@ -24,12 +26,13 @@ module Snowplow
       # Supported options
       @@collector_format_regex = /^(?:cloudfront|clj-tomcat|thrift|(?:json\/.+\/.+)|(?:tsv\/.+\/.+)|(?:ndjson\/.+\/.+))$/
       @@skip_options = Set.new(%w(staging s3distcp emr enrich shred elasticsearch archive_raw))
+      @@storage_targets = Set.new(%w(redshift_config postgresql_config elasticsearch_config amazon_dynamodb_config))
 
       include Monitoring::Logging
 
       # Initialize the class.
-      Contract ArgsHash, ConfigHash, ArrayOf[String], String => Runner
-      def initialize(args, config, enrichments_array, resolver)
+      Contract ArgsHash, ConfigHash, ArrayOf[String], String, ArrayOf[JsonFileHash] => Runner
+      def initialize(args, config, enrichments_array, resolver, targets_array)
 
         # Let's set our logging level immediately
         Monitoring::Logging::set_level config[:monitoring][:logging][:level]
@@ -38,7 +41,7 @@ module Snowplow
         @config = validate_and_coalesce(args, config)
         @enrichments_array = enrichments_array
         @resolver = resolver
-
+        @targets = group_targets(validate_targets(targets_array))
         self
       end
 
@@ -64,7 +67,7 @@ module Snowplow
           while true
             begin
               tries_left -= 1
-              job = EmrJob.new(@args[:debug], enrich, shred, elasticsearch, s3distcp, @config, @enrichments_array, @resolver)
+              job = EmrJob.new(@args[:debug], enrich, shred, elasticsearch, s3distcp, @config, @enrichments_array, @resolver, @targets)
               job.run(@config)
               break
             rescue BootstrapFailureError => bfe
@@ -156,6 +159,50 @@ module Snowplow
         config[:aws][:s3][:buckets] = Runner.add_trailing_slashes(config[:aws][:s3][:buckets])
 
         config
+      end
+
+      # Validate array of self-describing JSONs
+      Contract ArrayOf[JsonFileHash] => ArrayOf[Iglu::SelfDescribingJson]
+      def validate_targets(targets)
+        targets.map do |j|
+          begin
+            self_describing_json = Iglu::SelfDescribingJson.parse_json(j[:json])
+            self_describing_json.validate
+            j[:json] = self_describing_json
+            j
+          rescue Exception => e
+            print "Error in [#{j[:file]}] "
+            puts e.message
+            abort("Shutting down")
+          end
+        end.map do |j|
+          target = j[:json].schema.name
+          unless @@storage_targets.include?(target)
+            print "Error in [#{j[:file]}] "
+            puts "EmrEtlRunner doesn't support storage target configuration with name '#{target}'"
+            abort("Shutting down")
+          end
+          j[:json]
+        end
+      end
+
+
+      # Build Hash with some storage target for each purpose
+      Contract ArrayOf[Iglu::SelfDescribingJson] => TargetsHash
+      def group_targets(targets)
+        empty_targets = { :DUPLICATE_TRACKING => nil, :FAILED_EVENTS => [], :ENRICHED_EVENTS => [] }
+
+        loaded_targets = targets.group_by { |t| t.data[:purpose] }.map { |purpose, targets|
+          if targets.length == 0
+            [purpose.to_sym, nil]
+          elsif targets.length == 1
+            [purpose.to_sym, targets[0]]
+          else
+            raise ConfigError, "More than one storage target with purpose in '%s'" % kv[0]
+          end
+        }.to_h
+
+        empty_targets.merge(loaded_targets)
       end
 
     end

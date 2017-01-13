@@ -1,4 +1,4 @@
-# Copyright (c) 2012-2015 Snowplow Analytics Ltd. All rights reserved.
+# Copyright (c) 2012-2017 Snowplow Analytics Ltd. All rights reserved.
 #
 # This program is licensed to you under the Apache License Version 2.0,
 # and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -14,6 +14,8 @@
 # License::   Apache License Version 2.0
 
 require 'contracts'
+
+require_relative '../../lib/iglu'
 
 module Snowplow
   module EmrEtlRunner
@@ -68,22 +70,6 @@ module Snowplow
         })
       })
 
-    # The Hash containing the storage targets to load
-    TargetHash = ({
-      :name => String,
-      :type => String,
-      :host => String,
-      :database => String,
-      :port => Num,
-      :ssl_mode => Maybe[String],
-      :table => String,
-      :username => Maybe[String],
-      :password => Maybe[String],
-      :es_nodes_wan_only => Maybe[Bool],
-      :maxerror => Maybe[Num],
-      :comprows => Maybe[Num]
-      })
-
     # The Hash containing effectively the configuration YAML.
     ConfigHash = ({
       :aws => ({
@@ -133,8 +119,7 @@ module Snowplow
       :storage => ({
         :download => ({
           :folder => Maybe[String]
-          }),
-        :targets => ArrayOf[TargetHash]
+          })
         }),
       :monitoring => ({
         :tags => HashOf[Symbol, String],
@@ -149,8 +134,21 @@ module Snowplow
         })
       })
 
+    # Path and content of JSON file
+    JsonFileHash = ({
+        :file => String,
+        :json => Hash[Symbol, nil]
+    })
+
     # The Array (Tuple3) containing the CLI arguments, configuration YAML, and configuration JSONs
-    ArgsConfigEnrichmentsResolverTuple = [ArgsHash, ConfigHash, ArrayOf[String], String]
+    ArgsConfigEnrichmentsResolverTuple = [ArgsHash, ConfigHash, ArrayOf[String], String, ArrayOf[JsonFileHash]]
+
+    # Storage targets grouped by purpose
+    TargetsHash = ({
+        :DUPLICATE_TRACKING => Maybe[Iglu::SelfDescribingJson],
+        :FAILED_EVENTS => ArrayOf[Iglu::SelfDescribingJson],
+        :ENRICHED_EVENTS => ArrayOf[Iglu::SelfDescribingJson]
+    })
 
   end
 end
